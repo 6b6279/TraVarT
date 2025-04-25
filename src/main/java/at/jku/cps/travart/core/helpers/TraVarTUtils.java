@@ -1338,6 +1338,16 @@ public class TraVarTUtils {
 		}
 		return null;
 	}
+	
+	// Allow index-less getting of groups, especially right after using addGroup
+	public static Group getLastGroup(final Feature feature, final GroupType groupType) {
+		final List<Group> groups = feature.getChildren().stream().filter(g -> groupType.equals(g.GROUPTYPE))
+				.collect(Collectors.toList());
+		if (!groups.isEmpty()) {
+			return groups.getLast();
+		}
+		return null;
+	}
 
 	// TODO Add method that returns all groups of a specific type
 
