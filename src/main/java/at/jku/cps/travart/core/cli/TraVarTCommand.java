@@ -19,7 +19,7 @@ import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.config.Configurator;
 
 import at.jku.cps.travart.core.helpers.TraVarTPluginManager;
-import picocli.CommandLine;
+import picocli.CommandLine; // Re-implement CLI with Commons CLI framework?
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.ScopeType;
