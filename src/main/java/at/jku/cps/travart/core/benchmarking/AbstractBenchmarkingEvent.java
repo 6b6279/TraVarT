@@ -2,7 +2,7 @@ package at.jku.cps.travart.core.benchmarking;
 
 import java.time.Instant;
 
-public abstract class AbstractBenchmarkingEvent implements IBenchmarkingEvent {
+public abstract class AbstractBenchmarkingEvent implements IBenchmarkingEvent<String> {
 	
 	private final Instant emittedAt;
 	private final String message;
@@ -25,6 +25,12 @@ public abstract class AbstractBenchmarkingEvent implements IBenchmarkingEvent {
 		// FIXME Somehow include class name in this string
 		// Cannot be implemented in abstract parent class, we need specific child class name!
 		return "Emitted at " + emittedAt.toString() + ", session " + context + " :" + message;
+	}
+	
+	// For default abstract event, event message = event details
+	@Override
+	public String getMessage() {
+		return getDetails();
 	}
 
 	@Override

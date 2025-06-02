@@ -1,5 +1,7 @@
 package at.jku.cps.travart.core.benchmarking;
 
+import org.pf4j.ExtensionPoint;
+
 import com.google.common.eventbus.EventBus;
 
 public interface IBenchmark<T> {
@@ -8,5 +10,7 @@ public interface IBenchmark<T> {
 	void activateBenchmark(EventBus bus);
 	
 	public T getResults();
+	
+	public String getId();
 
 }

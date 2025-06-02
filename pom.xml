@@ -1,18 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-    <groupId>at.jku.cps</groupId>
-    <artifactId>travart-core</artifactId>
-    <version>2.0.0</version>
-    <properties>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
-        <javadoc.disabled>true</javadoc.disabled>
-        <deploy.disabled>true</deploy.disabled>
-        <source.disabled>true</source.disabled>
-        <checkstyle-maven-plugin.version>3.4.0</checkstyle-maven-plugin.version>
-    </properties>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://maven.apache.org/POM/4.0.0"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<groupId>at.jku.cps</groupId>
+	<artifactId>travart-core</artifactId>
+	<version>2.0.0</version>
+	<properties>
+		<maven.compiler.source>21</maven.compiler.source>
+		<maven.compiler.target>21</maven.compiler.target>
+		<javadoc.disabled>true</javadoc.disabled>
+		<deploy.disabled>true</deploy.disabled>
+		<source.disabled>true</source.disabled>
+		<checkstyle-maven-plugin.version>3.4.0</checkstyle-maven-plugin.version>
+		<auto-service.version>1.1.1</auto-service.version>
+	</properties>
 
 	<repositories>
 		<repository>
@@ -40,7 +42,8 @@
 			<artifactId>uvl-metamodel</artifactId>
 			<version>1.0</version>
 		</dependency>
-		<!-- https://mvnrepository.com/artifact/org.apache.logging.log4j/log4j-core -->
+		<!--
+		https://mvnrepository.com/artifact/org.apache.logging.log4j/log4j-core -->
 		<dependency>
 			<groupId>org.apache.logging.log4j</groupId>
 			<artifactId>log4j-core</artifactId>
@@ -65,6 +68,11 @@
 			<groupId>info.picocli</groupId>
 			<artifactId>picocli</artifactId>
 			<version>4.7.4</version>
+		</dependency>
+		<dependency>
+			<groupId>com.google.auto.service</groupId>
+			<artifactId>auto-service-annotations</artifactId>
+			<version>${auto-service.version}</version>
 		</dependency>
 	</dependencies>
 
@@ -106,6 +114,18 @@
 						</goals>
 					</execution>
 				</executions>
+			</plugin>
+			<plugin>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<configuration>
+					<annotationProcessorPaths>
+						<path>
+							<groupId>com.google.auto.service</groupId>
+							<artifactId>auto-service</artifactId>
+							<version>${auto-service.version}</version>
+						</path>
+					</annotationProcessorPaths>
+				</configuration>
 			</plugin>
 		</plugins>
 	</build>

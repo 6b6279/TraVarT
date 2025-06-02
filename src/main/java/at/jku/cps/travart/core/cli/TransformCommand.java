@@ -18,19 +18,28 @@ package at.jku.cps.travart.core.cli;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
+import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.stream.Collectors;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.google.common.eventbus.EventBus;
+
 import at.jku.cps.travart.core.common.IModelTransformer;
 import at.jku.cps.travart.core.common.IModelTransformer.STRATEGY;
 import at.jku.cps.travart.core.common.IPlugin;
+import at.jku.cps.travart.core.common.IBenchmarkingPlugin;
+import at.jku.cps.travart.core.benchmarking.IBenchmark;
 import at.jku.cps.travart.core.common.IDeserializer;
 import at.jku.cps.travart.core.common.ISerializer;
 import at.jku.cps.travart.core.exception.NotSupportedVariabilityTypeException;
@@ -39,6 +48,7 @@ import at.jku.cps.travart.core.helpers.TraVarTPluginManager;
 import at.jku.cps.travart.core.io.FileUtils;
 import at.jku.cps.travart.core.io.UVLDeserializer;
 import at.jku.cps.travart.core.io.UVLSerializer;
+import at.jku.cps.travart.core.transformation.AbstractBenchmarkingTransformer;
 import de.vill.model.FeatureModel;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -76,6 +86,9 @@ public class TransformCommand implements Callable<Integer> {
 	@Option(names = { "-tt", "-targetType", "--tt",
 			"--targetType" }, required = true, description = "The mandatory target type of the transformed variability artifacts, as listed in the plugin command.")
 	private String targetType;
+	
+	@Option(names = {"-b", "--benchmark"}, required = false, description = "Name of the respective benchmarks to use. A list of available benchmarks are provided by the bench command.")
+	private List<String> benchmarks;
 
 //	@Option(names = { "-validate",
 //			"--validate" }, description = "Validate the resulting variability artifact as with the validate command.")
@@ -118,7 +131,7 @@ public class TransformCommand implements Callable<Integer> {
 			return 4;
 		}
 		// do the transformations
-		LOGGER.debug("Starting trasnforming variability artifacts...");
+		LOGGER.debug("Starting transformation of variability artifacts...");
 		try {
 			if (Files.isRegularFile(sourcePath)) {
 				return transformSingleFile(sourcePath);
@@ -132,40 +145,82 @@ public class TransformCommand implements Callable<Integer> {
 	}
 
 	private int initializeTransformations() {
-		if (CORE_MODEL_UVL.equalsIgnoreCase(sourceType)) {
-			LOGGER.debug("Deteced source type UVL...");
-			deserializer = new UVLDeserializer();
-			startUVL = true;
-		} else {
-			IPlugin plugin = findPlugin(sourceType);
-			if (plugin == null) {
-				LOGGER.error("Could not find plugin for given source type!");
-				return 1;
+		// FIXME Duplicated code in if block
+		if (Objects.nonNull(benchmarks)) {
+			if (CORE_MODEL_UVL.equalsIgnoreCase(sourceType)) {
+				LOGGER.debug("Detected source type UVL...");
+				deserializer = new UVLDeserializer();
+				startUVL = true;
+			} else {
+				// By contract, findPlugin with `benchmarking` set to true should return IBenchmarkingPlugin
+				IBenchmarkingPlugin plugin = (IBenchmarkingPlugin) findPlugin(sourceType, true);
+				if (plugin == null) {
+					LOGGER.error("Could not find plugin for given source type!");
+					LOGGER.error("Non-benchmarking plugins were ignored.");
+					return 1;
+				}
+				LOGGER.debug(String.format("Detected source type %s...", plugin.getName()));
+				deserializer = plugin.getDeserializer();
+				// If benchmarks should be enabled, use other getter method
+				transformers.add(plugin.getBenchmarkingTransformer());
 			}
-			LOGGER.debug(String.format("Deteced source type %s...", plugin.getName()));
-			deserializer = plugin.getDeserializer();
-			transformers.add(plugin.getTransformer());
-		}
-		if (CORE_MODEL_UVL.equalsIgnoreCase(targetType)) {
-			LOGGER.debug("Deteced target type UVL...");
-			serializer = new UVLSerializer();
-		} else {
-			IPlugin plugin = findPlugin(targetType);
-			if (plugin == null) {
-				LOGGER.error("Could not find plugin for given target type!");
-				return 2;
+			if (CORE_MODEL_UVL.equalsIgnoreCase(targetType)) {
+				LOGGER.debug("Detected target type UVL...");
+				serializer = new UVLSerializer();
+			} else {
+				IBenchmarkingPlugin plugin = (IBenchmarkingPlugin) findPlugin(targetType, true);				
+				if (plugin == null) {
+					LOGGER.error("Could not find plugin for given target type!");
+					return 2;
+				}
+				LOGGER.debug(String.format("Detected target type %s...", plugin.getName()));
+				serializer = plugin.getSerializer();
+				transformers.add(plugin.getBenchmarkingTransformer());
 			}
-			LOGGER.debug(String.format("Deteced target type %s...", plugin.getName()));
-			serializer = plugin.getSerializer();
-			transformers.add(plugin.getTransformer());
+			return 0;
+		} else {
+			if (CORE_MODEL_UVL.equalsIgnoreCase(sourceType)) {
+				LOGGER.debug("Detected source type UVL...");
+				deserializer = new UVLDeserializer();
+				startUVL = true;
+			} else {
+				IPlugin plugin = findPlugin(sourceType, false);
+				if (plugin == null) {
+					LOGGER.error("Could not find plugin for given source type!");
+					return 1;
+				}
+				LOGGER.debug(String.format("Deteced source type %s...", plugin.getName()));
+				deserializer = plugin.getDeserializer();
+				transformers.add(plugin.getTransformer());
+			}
+			if (CORE_MODEL_UVL.equalsIgnoreCase(targetType)) {
+				LOGGER.debug("Detected target type UVL...");
+				serializer = new UVLSerializer();
+			} else {
+				IPlugin plugin = findPlugin(targetType, false);
+				if (plugin == null) {
+					LOGGER.error("Could not find plugin for given target type!");
+					return 2;
+				}
+				LOGGER.debug(String.format("Deteced target type %s...", plugin.getName()));
+				serializer = plugin.getSerializer();
+				transformers.add(plugin.getTransformer());
+			}
+			return 0;
 		}
-		return 0;
 	}
 
-	private static IPlugin findPlugin(final String type) {
+	private static IPlugin findPlugin(final String type, boolean benchmarking) {
 		LOGGER.debug(String.format("Try to find plugin for type %s...", type));
-		Optional<IPlugin> plugin = TraVarTPluginManager.getAvailablePlugins().values().stream()
+		Optional<IPlugin> plugin = Optional.empty();
+		// FIXME Code duplication
+		if (!benchmarking) {
+			plugin = TraVarTPluginManager.getAvailablePlugins().values().stream()
 				.filter(v -> v.getName().equalsIgnoreCase(type)).findFirst();
+		} else {
+			plugin = TraVarTPluginManager.getBenchmarkingPlugins().values().stream()
+				.filter(v -> v.getName().equalsIgnoreCase(type)).findFirst();
+		}
 		if (plugin.isPresent()) {
 			return plugin.get();
 		}
@@ -194,10 +249,26 @@ public class TransformCommand implements Callable<Integer> {
 
 	private Integer transformSingleFile(final Path file) throws IOException, NotSupportedVariabilityTypeException {
 		LOGGER.debug(String.format("Start transforming file %s...", file.getFileName()));
+		EventBus bus = null; // Initialize only if benchmarking is required
+		List<IBenchmark> toActivate = new ArrayList<IBenchmark>();
 		Object model = deserializer.deserializeFromFile(file);
 		Object newModel = model;
+		if (!Objects.isNull(benchmarks) && benchmarks.size() != 0) {
+			// Need to match and activate benchmarks
+			bus = new EventBus();
+			ServiceLoader<IBenchmark> allBenchmarks = ServiceLoader.load(IBenchmark.class);
+			toActivate.addAll(allBenchmarks.stream().map((e) -> e.get()).filter((d) -> benchmarks.contains(d.getId())).collect(Collectors.toList()));
+			for (IBenchmark benchmark : toActivate) {
+				benchmark.activateBenchmark(bus);
+			}
+		}
 		boolean intermediate = false;
 		for (IModelTransformer transformer : transformers) {
+			if (!Objects.isNull(benchmarks)) {
+				AbstractBenchmarkingTransformer benchmarkingTransformer = (AbstractBenchmarkingTransformer) transformer;
+				benchmarkingTransformer.setBus(bus);
+				// FIXME Set verbosity here
+			}
 			if (startUVL || intermediate) {
 				FeatureModel fm = (FeatureModel) newModel;
 				newModel = transformer.transform(fm, file.getFileName().toString(), STRATEGY.ROUNDTRIP);
@@ -208,8 +279,12 @@ public class TransformCommand implements Callable<Integer> {
 			}
 		}
 		Path newPath = targetPath.resolve(file.getFileName() + serializer.getFileExtension());
+		
 		LOGGER.debug(String.format("Write transformed file to %s...", newPath.toAbsolutePath()));
-		serializer.serializeToFile(newModel, newPath);
+		serializer.serializeToFile(newModel, newPath);		
+		for (IBenchmark benchmark : toActivate) {
+			System.out.println("Benchmark " + benchmark.getId() + " reports: " + benchmark.getResults());
+		}
 //		if (validate) {
 //			LOGGER.debug("Validate the transformed model...");
 //			// TODO validate newModel with model

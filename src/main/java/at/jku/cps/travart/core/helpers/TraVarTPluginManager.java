@@ -20,12 +20,14 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.pf4j.DefaultPluginManager;
 import org.pf4j.ManifestPluginDescriptorFinder;
 import org.pf4j.PluginDescriptorFinder;
 import org.pf4j.PluginManager;
 
+import at.jku.cps.travart.core.common.IBenchmarkingPlugin;
 import at.jku.cps.travart.core.common.IPlugin;
 
 /**
@@ -74,7 +76,12 @@ public final class TraVarTPluginManager {
 		for (final IPlugin plugin : plugins) {
 			availablePlugins.put(plugin.getId(), plugin);
 		}
-
+	}
+	
+	public static Map<String, IPlugin> getBenchmarkingPlugins() {
+		// Avoid using instanceof, filter already found plugins
+		final List<IBenchmarkingPlugin> benchmarkingPlugins = pluginManager.getExtensions(IBenchmarkingPlugin.class);
+		return Collections.unmodifiableMap(availablePlugins.entrySet().stream().filter((e) -> benchmarkingPlugins.contains(e.getValue())).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
 	}
 
 	/**
