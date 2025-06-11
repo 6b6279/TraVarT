@@ -4,11 +4,14 @@ import java.time.Instant;
 
 import com.google.common.eventbus.EventBus;
 
+import at.jku.cps.travart.core.FeatureModelStatistics;
 import at.jku.cps.travart.core.benchmarking.IEmitting;
 import at.jku.cps.travart.core.benchmarking.TransformationBeginEvent;
 import at.jku.cps.travart.core.benchmarking.TransformationEndEvent;
+import at.jku.cps.travart.core.common.ILanguage;
 import at.jku.cps.travart.core.common.IModelTransformer;
 import at.jku.cps.travart.core.common.IModelTransformer.STRATEGY;
+import at.jku.cps.travart.core.common.IStatistics;
 import at.jku.cps.travart.core.exception.NotSupportedVariabilityTypeException;
 import de.vill.model.FeatureModel;
 
@@ -21,16 +24,15 @@ public abstract class AbstractBenchmarkingTransformer<T> implements IEmitting, I
 	@Override
 	final public FeatureModel transform(T model, String modelName, STRATEGY level)
 			throws NotSupportedVariabilityTypeException {
-		// FIXME Introduce additional ICountableModel interface to ensure model size can be always calculated?
 		FeatureModel transformationResult;
-		bus.post(new TransformationBeginEvent(Instant.now(), modelName, model.hashCode(), 0));
+		bus.post(new TransformationBeginEvent(Instant.now(), modelName, model.hashCode(), getTargetStatistics().getVariabilityElementsCount(model)));
 		try {
 			transformationResult = transformInner(model, modelName, level);
 		} catch (Exception e) {
 			bus.post(new TransformationEndEvent(Instant.now(), modelName, model.hashCode(), 0, false));
 			throw e;
 		}
-		bus.post(new TransformationEndEvent(Instant.now(), modelName, model.hashCode(), 0, true));
+		bus.post(new TransformationEndEvent(Instant.now(), modelName, model.hashCode(), FeatureModelStatistics.getInstance().getConstraintsCount(transformationResult), true));
 		return transformationResult;
 	}
 
@@ -79,5 +81,7 @@ public abstract class AbstractBenchmarkingTransformer<T> implements IEmitting, I
 	public void toggleMute() {
 		this.muted = !muted;
 	}
+	
+	public abstract IStatistics<T> getTargetStatistics();
 
 }

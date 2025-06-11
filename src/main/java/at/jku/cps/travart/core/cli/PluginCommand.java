@@ -17,6 +17,7 @@ package at.jku.cps.travart.core.cli;
 
 import java.util.concurrent.Callable;
 
+import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -32,8 +33,9 @@ public class PluginCommand implements Callable<Integer> {
 	@Override
 	public Integer call() throws Exception {
 		LOGGER.debug("Look up the plugins installed...");
+		TraVarTPluginManager.startPlugins();
 		if (!TraVarTPluginManager.getAvailablePlugins().isEmpty()) {
-			LOGGER.debug(String.format("# Pugins found %s", TraVarTPluginManager.getAvailablePlugins().size()));
+			LOGGER.debug(String.format("# Plugins found %s", TraVarTPluginManager.getAvailablePlugins().size()));
 			System.out.println(String.format("Installed Plugins: %s", toPluginNameString()));
 			System.out.println(
 					"Languages provided by TraVarT...\n- at.jku.cps.travart.core[de.vill.uvl-parser] Universal Variability Language v1.0-SNAPSHOT");

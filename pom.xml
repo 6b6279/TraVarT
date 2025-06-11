@@ -74,6 +74,16 @@
 			<artifactId>auto-service-annotations</artifactId>
 			<version>${auto-service.version}</version>
 		</dependency>
+		<dependency>
+			<groupId>org.apache.logging.log4j</groupId>
+			<artifactId>log4j-api</artifactId>
+			<version>2.20.0</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.logging.log4j</groupId>
+			<artifactId>log4j-slf4j-impl</artifactId>
+			<version>2.20.0</version>
+		</dependency>
 	</dependencies>
 
 	<build>
@@ -127,6 +137,28 @@
 					</annotationProcessorPaths>
 				</configuration>
 			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-jar-plugin</artifactId>
+				<configuration>
+					<archive>
+						<manifest>
+							<addClasspath>true</addClasspath>
+							<mainClass>fully.qualified.MainClass</mainClass>
+						</manifest>
+					</archive>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>exec-maven-plugin</artifactId>
+				<version>3.1.0</version>
+				<configuration>
+					<mainClass>at.jku.cps.travart.core.cli.TraVarTCommand</mainClass>
+					<classpathScope>compile</classpathScope>
+				</configuration>
+			</plugin>
+
 		</plugins>
 	</build>
 </project>

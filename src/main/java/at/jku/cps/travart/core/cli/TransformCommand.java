@@ -215,9 +215,13 @@ public class TransformCommand implements Callable<Integer> {
 		Optional<IPlugin> plugin = Optional.empty();
 		// FIXME Code duplication
 		if (!benchmarking) {
+			LOGGER.debug("Non-benchmarking mode: Looking for IPlugin extensions...");
 			plugin = TraVarTPluginManager.getAvailablePlugins().values().stream()
 				.filter(v -> v.getName().equalsIgnoreCase(type)).findFirst();
 		} else {
+			LOGGER.debug("Benchmarking plugins found: " + TraVarTPluginManager.getBenchmarkingPlugins().size());
+			TraVarTPluginManager.getBenchmarkingPlugins().values().forEach(
+					e -> LOGGER.debug("Found benchmarking plugin with name " + e.getName()));
 			plugin = TraVarTPluginManager.getBenchmarkingPlugins().values().stream()
 				.filter(v -> v.getName().equalsIgnoreCase(type)).findFirst();
 		}
@@ -254,12 +258,18 @@ public class TransformCommand implements Callable<Integer> {
 		Object model = deserializer.deserializeFromFile(file);
 		Object newModel = model;
 		if (!Objects.isNull(benchmarks) && benchmarks.size() != 0) {
+			LOGGER.debug("Benchmarking option non-null, initializing event bus...");
 			// Need to match and activate benchmarks
 			bus = new EventBus();
 			ServiceLoader<IBenchmark> allBenchmarks = ServiceLoader.load(IBenchmark.class);
-			toActivate.addAll(allBenchmarks.stream().map((e) -> e.get()).filter((d) -> benchmarks.contains(d.getId())).collect(Collectors.toList()));
-			for (IBenchmark benchmark : toActivate) {
-				benchmark.activateBenchmark(bus);
+			LOGGER.debug("Currently available benchmarks: " + allBenchmarks);
+			//toActivate.addAll(allBenchmarks.stream().map((e) -> e.get()).filter((d) -> benchmarks.contains(d.getId())).collect(Collectors.toList()));
+			for (IBenchmark benchmark : allBenchmarks) {
+				LOGGER.debug("Checking if " + benchmark.getId() + " should be activated...");
+				if (benchmarks.contains(benchmark.getId())) {
+					LOGGER.debug("Matched benchmark " + benchmark.getId());
+					benchmark.activateBenchmark(bus);
+				}
 			}
 		}
 		boolean intermediate = false;

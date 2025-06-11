@@ -34,7 +34,7 @@ public interface IStatistics<T> {
 	 * @param model the model from which the unit of elements should be counted.
 	 * @return the number of variability elements.
 	 */
-	long getVariabilityElementsCount(T model);
+	int getVariabilityElementsCount(T model);
 
 	/**
 	 * Returns the number of constraints in the given variability model.
@@ -42,7 +42,7 @@ public interface IStatistics<T> {
 	 * @param model the model from which the constraints should be counted.
 	 * @return the number of constraints.
 	 */
-	long getConstraintsCount(T model);
+	int getConstraintsCount(T model);
 
 	/**
 	 * Logs the model statistics.

@@ -1,5 +1,8 @@
 package at.jku.cps.travart.core.benchmarking;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.google.auto.service.AutoService;
 import com.google.common.eventbus.EventBus;
 import com.google.common.eventbus.Subscribe;
@@ -10,6 +13,8 @@ public class ModelSizeBenchmark implements IBenchmark<Integer> {
 	private int currentSize;
 	private EventBus registeredBus;
 	private int bitMask; // Use a bitmask for filtering specific plugins?
+	
+	static final Logger LOGGER = LogManager.getLogger();
 	
 	@Override
 	public String getId() {
@@ -28,12 +33,14 @@ public class ModelSizeBenchmark implements IBenchmark<Integer> {
 	
 	@Subscribe
 	private void initialSize(TransformationBeginEvent event) {
+		LOGGER.debug("Just recieved: TransformationBeginEvent = " + event.getDetails() + ", size: " + event.initialSize);
 		currentSize = event.initialSize;
 	}
 	
 	@Subscribe
 	private void endOfTransformation(TransformationEndEvent event) {
 		// FIXME React if currentSize != event.finalSize?
+		currentSize = event.finalSize;
 		registeredBus.unregister(this);
 	}
 
