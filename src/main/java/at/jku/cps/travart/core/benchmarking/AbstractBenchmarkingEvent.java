@@ -24,7 +24,7 @@ public abstract class AbstractBenchmarkingEvent implements IBenchmarkingEvent<St
 	public String getDetails() {
 		// FIXME Somehow include class name in this string
 		// Cannot be implemented in abstract parent class, we need specific child class name!
-		return "Emitted at " + emittedAt.toString() + ", session " + context + " :" + message;
+		return "Emitted at " + emittedAt.toString() + ", session " + context + ":" + message;
 	}
 	
 	// For default abstract event, event message = event details

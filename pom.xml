@@ -24,7 +24,6 @@
 	</repositories>
 
 	<dependencies>
-		<!-- https://mvnrepository.com/artifact/org.pf4j/pf4j -->
 		<dependency>
 			<groupId>org.pf4j</groupId>
 			<artifactId>pf4j</artifactId>
@@ -41,9 +40,7 @@
 			<groupId>io.github.universal-variability-language</groupId>
 			<artifactId>uvl-metamodel</artifactId>
 			<version>1.0</version>
-		</dependency>
-		<!--
-		https://mvnrepository.com/artifact/org.apache.logging.log4j/log4j-core -->
+		</dependency>		
 		<dependency>
 			<groupId>org.apache.logging.log4j</groupId>
 			<artifactId>log4j-core</artifactId>
@@ -68,6 +65,17 @@
 			<groupId>info.picocli</groupId>
 			<artifactId>picocli</artifactId>
 			<version>4.7.4</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-csv</artifactId>
+			<version>1.14.0</version>
+		</dependency>
+		<dependency>
+			<groupId>com.google.auto.service</groupId>
+			<artifactId>auto-service</artifactId>
+			<version>${auto-service.version}</version>
+			<optional>true</optional>
 		</dependency>
 		<dependency>
 			<groupId>com.google.auto.service</groupId>

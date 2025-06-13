@@ -19,9 +19,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
@@ -40,6 +42,7 @@ import at.jku.cps.travart.core.common.IModelTransformer.STRATEGY;
 import at.jku.cps.travart.core.common.IPlugin;
 import at.jku.cps.travart.core.common.IBenchmarkingPlugin;
 import at.jku.cps.travart.core.benchmarking.IBenchmark;
+import at.jku.cps.travart.core.benchmarking.ResultsWriter;
 import at.jku.cps.travart.core.common.IDeserializer;
 import at.jku.cps.travart.core.common.ISerializer;
 import at.jku.cps.travart.core.exception.NotSupportedVariabilityTypeException;
@@ -87,8 +90,14 @@ public class TransformCommand implements Callable<Integer> {
 			"--targetType" }, required = true, description = "The mandatory target type of the transformed variability artifacts, as listed in the plugin command.")
 	private String targetType;
 	
-	@Option(names = {"-b", "--benchmark"}, required = false, description = "Name of the respective benchmarks to use. A list of available benchmarks are provided by the bench command.")
+	@Option(names = {"-b", "--benchmark"}, split=",", required = false, description = "Name of the respective benchmarks to use (comma-seperated). A list of available benchmarks are provided by the bench command.")
 	private List<String> benchmarks;
+	
+	@Option(names = {"-wb", "--write-benchmarks"}, required = false, description = "Path to file to which the benchmark results should be written in CSV format. This is optional.")
+	private Path benchmarkResultsFile;
+	
+	@Option(names = {"--strategy"}, required = false, defaultValue = "ONE_WAY", description = "Transformation strategy to use: ROUNDTRIP or ONE_WAY. Will default to ONE_WAY if none given.")
+	private STRATEGY strategy;
 
 //	@Option(names = { "-validate",
 //			"--validate" }, description = "Validate the resulting variability artifact as with the validate command.")
@@ -97,6 +106,7 @@ public class TransformCommand implements Callable<Integer> {
 	private IDeserializer deserializer;
 	private ISerializer serializer;
 	private final Queue<IModelTransformer> transformers = new LinkedList<>();
+	private ResultsWriter rw;
 
 	private boolean startUVL = false;
 
@@ -141,6 +151,12 @@ public class TransformCommand implements Callable<Integer> {
 			LOGGER.error("Error while handling files...");
 			LOGGER.error(ex.toString());
 			throw new TransformationException(ex);
+		} finally {
+			// Need to close ResultsWriter here if it's set
+			if (Objects.nonNull(rw)) {
+				LOGGER.debug("Used ResultsWriter, closing enclosed FileWriter...");
+				rw.dispose();
+			}
 		}
 	}
 
@@ -254,25 +270,30 @@ public class TransformCommand implements Callable<Integer> {
 	private Integer transformSingleFile(final Path file) throws IOException, NotSupportedVariabilityTypeException {
 		LOGGER.debug(String.format("Start transforming file %s...", file.getFileName()));
 		EventBus bus = null; // Initialize only if benchmarking is required
-		List<IBenchmark> toActivate = new ArrayList<IBenchmark>();
+		List<IBenchmark> activated = new ArrayList<IBenchmark>();
 		Object model = deserializer.deserializeFromFile(file);
 		Object newModel = model;
 		if (!Objects.isNull(benchmarks) && benchmarks.size() != 0) {
-			LOGGER.debug("Benchmarking option non-null, initializing event bus...");
+			LOGGER.debug("Benchmarking option non-null (" + benchmarks + "), initializing event bus...");
 			// Need to match and activate benchmarks
 			bus = new EventBus();
 			ServiceLoader<IBenchmark> allBenchmarks = ServiceLoader.load(IBenchmark.class);
-			LOGGER.debug("Currently available benchmarks: " + allBenchmarks);
-			//toActivate.addAll(allBenchmarks.stream().map((e) -> e.get()).filter((d) -> benchmarks.contains(d.getId())).collect(Collectors.toList()));
-			for (IBenchmark benchmark : allBenchmarks) {
+			LOGGER.debug("Number of known benchmarks: " + allBenchmarks.stream().count());
+			for (IBenchmark benchmark : allBenchmarks) {				
 				LOGGER.debug("Checking if " + benchmark.getId() + " should be activated...");
 				if (benchmarks.contains(benchmark.getId())) {
 					LOGGER.debug("Matched benchmark " + benchmark.getId());
 					benchmark.activateBenchmark(bus);
+					activated.add(benchmark); // Required to read results after transforming
 				}
+			}
+			// If ResultsWriter is unset, initialize it
+			if (Objects.isNull(rw) && Objects.nonNull(benchmarkResultsFile)) {
+				rw = new ResultsWriter(activated, benchmarkResultsFile);				
 			}
 		}
 		boolean intermediate = false;
+		// FIXME Benchmarking chaos: What if multiple transformers are invoked here?
 		for (IModelTransformer transformer : transformers) {
 			if (!Objects.isNull(benchmarks)) {
 				AbstractBenchmarkingTransformer benchmarkingTransformer = (AbstractBenchmarkingTransformer) transformer;
@@ -281,19 +302,30 @@ public class TransformCommand implements Callable<Integer> {
 			}
 			if (startUVL || intermediate) {
 				FeatureModel fm = (FeatureModel) newModel;
-				newModel = transformer.transform(fm, file.getFileName().toString(), STRATEGY.ROUNDTRIP);
+				newModel = transformer.transform(fm, file.getFileName().toString(), strategy);
 				intermediate = false;
 			} else {
-				newModel = transformer.transform(model, file.getFileName().toString(), STRATEGY.ROUNDTRIP);
+				newModel = transformer.transform(model, file.getFileName().toString(), strategy);
 				intermediate = true;
 			}
 		}
 		Path newPath = targetPath.resolve(file.getFileName() + serializer.getFileExtension());
 		
 		LOGGER.debug(String.format("Write transformed file to %s...", newPath.toAbsolutePath()));
-		serializer.serializeToFile(newModel, newPath);		
-		for (IBenchmark benchmark : toActivate) {
-			System.out.println("Benchmark " + benchmark.getId() + " reports: " + benchmark.getResults());
+		serializer.serializeToFile(newModel, newPath);
+		
+		for (IBenchmark benchmark : activated) {
+			System.out.println("Benchmark " + benchmark.getId() + " reports: " + benchmark.getResults().toString());			
+		}
+		
+		// If ResultsWriter is set, write results to CSV file
+		if (Objects.nonNull(rw)) {			
+			Map<String, Object> record = new HashMap();
+			record.put("filePath", file.getFileName());
+			for (IBenchmark bench : activated) {
+				record.put(bench.getId(), bench.getResults());				
+			}
+			rw.writeResults(record);
 		}
 //		if (validate) {
 //			LOGGER.debug("Validate the transformed model...");
