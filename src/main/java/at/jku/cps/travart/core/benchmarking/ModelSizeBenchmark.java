@@ -8,13 +8,9 @@ import com.google.common.eventbus.EventBus;
 import com.google.common.eventbus.Subscribe;
 
 @AutoService(IBenchmark.class)
-public class ModelSizeBenchmark implements IBenchmark<Integer> {
+public class ModelSizeBenchmark extends AbstractBenchmark<Integer> {
 	
 	private int currentSize;
-	private EventBus registeredBus;
-	private int bitMask; // Use a bitmask for filtering specific plugins?
-	
-	static final Logger LOGGER = LogManager.getLogger();
 	
 	@Override
 	public String getId() {
@@ -33,7 +29,7 @@ public class ModelSizeBenchmark implements IBenchmark<Integer> {
 	
 	@Subscribe
 	private void initialSize(TransformationBeginEvent event) {
-		LOGGER.debug("Just recieved: TransformationBeginEvent = " + event.getDetails() + ", size: " + event.initialSize);
+		log("Just recieved: TransformationBeginEvent = " + event.getDetails() + ", size: " + event.initialSize);
 		currentSize = event.initialSize;
 	}
 	

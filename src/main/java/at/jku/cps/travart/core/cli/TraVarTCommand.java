@@ -24,9 +24,8 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.ScopeType;
 
-// ValidateCommand.class,
 @Command(name = "travart", subcommands = { TransformCommand.class,
-		PluginCommand.class }, mixinStandardHelpOptions = true, version = "0.0.1", description = "TraVarT main command to transform and validate variability artifacts.")
+		PluginCommand.class, BenchCommand.class }, mixinStandardHelpOptions = true, version = "0.0.1", description = "TraVarT main command to transform and validate variability artifacts.")
 public class TraVarTCommand {
 
 	static {

@@ -84,7 +84,7 @@ public final class TraVarTPluginManager {
 	 * A static function to find the available plugins in the system.
 	 */
 	public static void findAvailablePlugins() {
-		// retrieves the extensions for IPlugin extension point
+		// Retrieve extensions for IPlugin extension point
 		final List<IPlugin> plugins = pluginManager.getExtensions(IPlugin.class);
 		for (final IPlugin plugin : plugins) {
 			availablePlugins.put(plugin.getId(), plugin);

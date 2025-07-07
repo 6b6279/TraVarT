@@ -1,5 +1,7 @@
 package at.jku.cps.travart.core.benchmarking;
 
+import org.slf4j.event.Level;
+
 import com.google.common.eventbus.EventBus;
 
 public interface IEmitting {
@@ -8,10 +10,12 @@ public interface IEmitting {
 	
 	EventBus getBus();
 	
-	void setVerbosity(int level);
+	void setVerbosity(Level level);
 	
-	int getVerbosity();
+    Level getVerbosity();
 	
-	void toggleMute();
+	void triggerMuteEvent();
+	
+	void triggerUnmuteEvent();
 
 }

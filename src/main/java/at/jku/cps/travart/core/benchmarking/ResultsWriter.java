@@ -14,7 +14,7 @@ import com.google.common.collect.ObjectArrays;
 public class ResultsWriter {
 
 	// FIXME Add more defaultHeaders
-	private final String[] defaultHeaders = {"fileName"};
+	private final String[] defaultHeaders = {"fileName", "targetType"};
 	private final CSVFormat benchmarkResultsFormat;
 	private final CSVPrinter csvPrinter;
 	
