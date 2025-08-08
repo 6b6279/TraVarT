@@ -13,12 +13,14 @@ import java.time.Instant;
 public class TransformationEndEvent extends AbstractBenchmarkingEvent {
 	
 	public final int finalSize;
-	public final boolean success; 
+	public final boolean success;
+	public final boolean intermediate;
 
-	public TransformationEndEvent(Instant time, String msg, int ctx, int size, boolean status) {
+	public TransformationEndEvent(Instant time, String msg, int ctx, int size, boolean status, boolean intermediate) {
 		super(time, msg, ctx);
 		this.finalSize  = size;
 		this.success = status;
+		this.intermediate = intermediate;
 	}
 
 }

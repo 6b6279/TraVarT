@@ -1,7 +1,7 @@
 package at.jku.cps.travart.core.benchmarking;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import java.util.Collection;
+import java.util.List;
 
 import com.google.auto.service.AutoService;
 import com.google.common.eventbus.EventBus;
@@ -10,7 +10,9 @@ import com.google.common.eventbus.Subscribe;
 @AutoService(IBenchmark.class)
 public class ModelSizeBenchmark extends AbstractBenchmark<Integer> {
 	
-	private int currentSize;
+	private int initialSize;
+	private int finalSize;
+	private int diff;
 	
 	@Override
 	public String getId() {
@@ -19,24 +21,28 @@ public class ModelSizeBenchmark extends AbstractBenchmark<Integer> {
 	
 	@Subscribe
 	private void count(NewFeatureEvent event) {
-		currentSize++;
+		diff++;
 	}
 	
 	@Subscribe
 	private void count(FeatureDeletedEvent event) {
-		currentSize--;
+		diff--;
 	}
 	
 	@Subscribe
 	private void initialSize(TransformationBeginEvent event) {
 		log("Just recieved: TransformationBeginEvent = " + event.getDetails() + ", size: " + event.initialSize);
-		currentSize = event.initialSize;
+		this.initialSize = event.initialSize;
 	}
 	
 	@Subscribe
 	private void endOfTransformation(TransformationEndEvent event) {
 		// FIXME React if currentSize != event.finalSize?
-		currentSize = event.finalSize;
+		log("Just recieved: TransformationEndEvent = " + event.getDetails() + ", size: " + event.finalSize);
+		if (event.intermediate) return;
+		if ((initialSize + diff) != event.finalSize) 
+			LOGGER.warn("Feature count doesn't match with count reported by TransformationEndEvent: " + diff + " != " + event.finalSize);
+		this.finalSize = event.finalSize;
 		registeredBus.unregister(this);
 	}
 
@@ -47,8 +53,13 @@ public class ModelSizeBenchmark extends AbstractBenchmark<Integer> {
 	}
 
 	@Override
-	public Integer getResults() {
-		return currentSize;
+	public List<Integer> getResults() {
+		return List.of(initialSize, diff, finalSize);
+	}
+
+	@Override
+	public List<String> getResultsHeader() {
+		return List.of("initialSize", "expectedDiff", "finalSize");
 	}
 
 }

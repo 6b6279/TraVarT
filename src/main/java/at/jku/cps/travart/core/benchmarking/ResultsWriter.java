@@ -6,6 +6,8 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVPrinter;
 
@@ -18,11 +20,10 @@ public class ResultsWriter {
 	private final CSVFormat benchmarkResultsFormat;
 	private final CSVPrinter csvPrinter;
 	
-	@SuppressWarnings("rawtypes")
 	// Try to work with List arguments although we need to use an Array for specifying CSV headers
 	public ResultsWriter(List<IBenchmark> benchmarks, Path targetFile) throws IOException {
-		var benchmarkIds = benchmarks.stream().map(e -> e.getId()).toArray(String[]::new);
-		benchmarkResultsFormat = CSVFormat.DEFAULT.builder().setHeader(ObjectArrays.concat(defaultHeaders, benchmarkIds, String.class)).get();
+		String[] benchmarkColumns = (String[]) benchmarks.stream().<String>flatMap(e -> e.getResultsHeader().stream()).toArray(String[]::new);
+		benchmarkResultsFormat = CSVFormat.DEFAULT.builder().setHeader(ObjectArrays.concat(defaultHeaders, benchmarkColumns, String.class)).get();
 		csvPrinter = new CSVPrinter(new FileWriter(targetFile.toString()), benchmarkResultsFormat);
 	}
 	
