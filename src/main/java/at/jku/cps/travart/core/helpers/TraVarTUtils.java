@@ -1248,6 +1248,7 @@ public class TraVarTUtils {
 			final GroupType groupType) {
 		Objects.requireNonNull(fm);
 		Objects.requireNonNull(feature);
+		Objects.requireNonNull(parent);
 		if (feature.getParentGroup() != null) {
 			feature.getParentGroup().getFeatures().remove(feature);
 			// NPE here: When the feature is removed from its group, getParentGroup returns null
@@ -1270,6 +1271,8 @@ public class TraVarTUtils {
 		feature.setParentGroup(group);
 		TraVarTUtils.addFeature(fm, parent);
 		TraVarTUtils.addFeature(fm, feature);
+		// Ensure that features do not disappear after being added to a group
+		assert (getFeatureMapFromRoot(fm.getRootFeature()).values().contains(feature));
 	}
 
 	/**

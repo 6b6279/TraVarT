@@ -16,7 +16,7 @@
  *******************************************************************************/
 package at.jku.cps.travart.core.common;
 
-import java.util.logging.Logger;
+import org.apache.logging.log4j.Logger;
 
 /**
  * This base interface defines methods to derive statistics of a given

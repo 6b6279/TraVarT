@@ -16,8 +16,9 @@
 package at.jku.cps.travart.core;
 
 import java.util.Objects;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.Logger;
 
 import at.jku.cps.travart.core.common.IStatistics;
 import at.jku.cps.travart.core.helpers.TraVarTUtils;
@@ -41,7 +42,7 @@ public final class FeatureModelStatistics implements IStatistics<FeatureModel> {
 
 	@Override
 	public int getVariabilityElementsCount(final FeatureModel fm) {
-		return Objects.requireNonNull(fm).getFeatureMap().size();
+		return TraVarTUtils.getFeatureMapFromRoot(fm.getRootFeature()).size();
 	}
 
 	@Override
@@ -52,15 +53,15 @@ public final class FeatureModelStatistics implements IStatistics<FeatureModel> {
 
 	@Override
 	public void logModelStatistics(final Logger logger, final FeatureModel fm) {
-		logger.log(Level.INFO, "Root Name: {0}", fm.getRootFeature().getFeatureName());
-		logger.log(Level.INFO, "#Features: {0}", getVariabilityElementsCount(fm));
-		logger.log(Level.INFO, "#Abstract Features: {0}", countAbstractFeatures(fm));
-		logger.log(Level.INFO, "#Mandatory Features: {0}", countMandatoryFeatures(fm));
-		logger.log(Level.INFO, "#Optional Features: {0}", countOptionalFeatures(fm));
-		logger.log(Level.INFO, "#Or groups: {0}", countOrGroups(fm));
-		logger.log(Level.INFO, "#Xor groups: {0}", countXorGroups(fm));
-		logger.log(Level.INFO, "#Constraints: {0}", getConstraintsCount(fm));
-		logger.log(Level.INFO, "Tree height: {0}", computeFMHeight(TraVarTUtils.getRoot(fm)));
+		logger.log(Level.INFO, "Root Name: {}", fm.getRootFeature().getFeatureName());
+		logger.log(Level.INFO, "#Features: {}", getVariabilityElementsCount(fm));
+		logger.log(Level.INFO, "#Abstract Features: {}", countAbstractFeatures(fm));
+		logger.log(Level.INFO, "#Mandatory Features: {}", countMandatoryFeatures(fm));
+		logger.log(Level.INFO, "#Optional Features: {}", countOptionalFeatures(fm));
+		logger.log(Level.INFO, "#Or groups: {}", countOrGroups(fm));
+		logger.log(Level.INFO, "#Xor groups: {}", countXorGroups(fm));
+		logger.log(Level.INFO, "#Constraints: {}", getConstraintsCount(fm));
+		logger.log(Level.INFO, "Tree height: {}", computeFMHeight(TraVarTUtils.getRoot(fm)));
 	}
 
 	private static int countAbstractFeatures(final FeatureModel fm) {
