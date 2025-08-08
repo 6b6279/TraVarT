@@ -15,11 +15,15 @@
  *******************************************************************************/
 package at.jku.cps.travart.core.cli;
 
+import static org.mockito.Mockito.mock;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
@@ -31,11 +35,19 @@ import java.util.Queue;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.stream.StreamSupport;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.mockito.Mockito;
 import org.slf4j.event.Level;
 
 import com.google.common.eventbus.EventBus;
@@ -91,7 +103,7 @@ public class TransformCommand implements Callable<Integer> {
 	private String sourceType;
 
 	@Option(names = { "-tt", "-targetType", "--tt",
-			"--targetType" }, required = true, description = "The mandatory target type of the transformed variability artifacts, as listed in the plugin command.")
+			"--targetType" }, required = true, description = "The mandatory target type of the transformed variability artifacts, as listed by the plugin command.")
 	private String targetType;
 
 	@Option(names = { "-b",
@@ -105,14 +117,32 @@ public class TransformCommand implements Callable<Integer> {
 	@Option(names = {
 			"--strategy" }, required = false, defaultValue = "ONE_WAY", description = "Transformation strategy to use: ROUNDTRIP or ONE_WAY. Will default to ONE_WAY if none given.")
 	private STRATEGY strategy;
+	
+	@Option(names = {
+			"--roundtrip" }, description = "Set only if --strategy was set to ROUNDTRIP. Does an in-place roundtrip transformation over the targetType.")
+	private boolean inPlaceRoundtrip;
+	
+	@Option(names = {
+			"--no-serialize" }, description = "Do not serialize after transformation. Especially useful if the plugin used does not have a robust serializer, or only the benchmarking results are relevant.")
+	private boolean skipSerialization;
+	
+	@Option(names = {
+			"--reverse-transformation" }, 
+			description = "Set only if --no-serialize is set and --strategy is ROUNDTRIP. Reverses transformation directly after, benchmarking only the reverse transformation."
+	)
+	private boolean reverseTransformation;
 
 	@Option(names = {
 			"--strict" }, description = "Whether TraVarT should stop transformation if the underlying plugin throws an exception. This is only relevant when multiple models are being transformed.")
 	private boolean strict;
+	
+	@Option(names = {
+			"--timeout" }, defaultValue = "5", description = "Timeout for (de-)serializing models. Defaults to 5 seconds.")
+	private long timeout;
 
 	private IDeserializer deserializer;
 	private ISerializer serializer;
-	private final Queue<IModelTransformer> transformers = new LinkedList<>();
+	private final Deque<IModelTransformer> transformers = new ArrayDeque<>();
 	private ResultsWriter rw;
 
 	private boolean startUVL = false;
@@ -202,8 +232,28 @@ public class TransformCommand implements Callable<Integer> {
 			}
 			LOGGER.debug(String.format("Detected target type %s...", targetTypePlugin.getName()));
 			serializer = targetTypePlugin.getSerializer();
+			// FIXME Handle "reverseTransformation"
 			transformers.add(targetTypePlugin.getTransformer());
 		}
+		
+		if (inPlaceRoundtrip || reverseTransformation) {
+			/*
+			if (strategy != STRATEGY.ROUNDTRIP) {
+				LOGGER.error("--roundtrip set, but --strategy isn't ROUNDTRIP!");
+				return -1;
+			} else {
+			*/
+				// Add "return trip" to queue
+				transformers.addAll(transformers.reversed());
+			//}
+		}
+		
+		if (skipSerialization) {
+			serializer = mock(ISerializer.class);
+			LOGGER.info("Using mock serializer, won't write target model!");
+		}
+		
+		LOGGER.info("Scheduled transformation order: " + transformers.toString());
 		
 		return 0;
 	}
@@ -264,7 +314,27 @@ public class TransformCommand implements Callable<Integer> {
 		LOGGER.debug(String.format("Start transforming file %s...", file.getFileName()));
 		EventBus bus = null; // Initialize only if benchmarking is required
 		List<IBenchmark> activated = new ArrayList<IBenchmark>();
-		Object model = deserializer.deserializeFromFile(file);
+		LOGGER.debug("Attempting to deserizalize " + file.getFileName() + " with " + deserializer.toString());
+		
+		final ExecutorService executor = Executors.newSingleThreadExecutor();
+		Object model;
+		Future<Object> maybeModel = executor.submit(() -> {
+			return deserializer.deserializeFromFile(file);
+		});
+		
+		try {
+			model = maybeModel.get(timeout, TimeUnit.SECONDS);
+		} catch (Exception e) {
+			if (strict) {
+				throw new Error(e);
+			} else {
+				System.err.println("Deserializer failed! " + file.getFileName() + ", unstrict mode -> continue with next model in batch");
+				System.err.println("Deserializer reports: " + e.getClass().descriptorString() + " with " +  e.getMessage() + ", caused by");
+				e.printStackTrace();
+				return -1;
+			}
+		}
+		
 		if (!Objects.isNull(benchmarks) && benchmarks.size() != 0) {
 			LOGGER.debug("Benchmarking option non-null (" + benchmarks + "), initializing event bus...");
 			// Need to match and activate benchmarks
@@ -286,49 +356,72 @@ public class TransformCommand implements Callable<Integer> {
 			}
 		}
 
-		boolean intermediate = false;
-		// FIXME Benchmarking chaos: What if multiple transformers are invoked here?
-		for (IModelTransformer transformer : transformers) {
+		boolean fromUVL = startUVL;
+		var transformationIterator = transformers.iterator();
+		var transformationIndex = 0;
+		LOGGER.info("Currently scheduled: " + transformers.size() + " transformation steps"); 
+		while (transformationIterator.hasNext()) {
+			transformationIndex++;
+			var transformer = transformationIterator.next();
+			LOGGER.info("Is current step intermediate? " + transformationIterator.hasNext()); 
 			if (!Objects.isNull(benchmarks)) {
 				AbstractBenchmarkingTransformer benchmarkingTransformer = (AbstractBenchmarkingTransformer) transformer;
-				benchmarkingTransformer.setBus(bus);
-				// FIXME Verbosity should be set according to some command-line parameter
-				benchmarkingTransformer.setVerbosity(Level.TRACE);
+				if (!reverseTransformation || transformationIndex >= transformers.size()) {
+					LOGGER.info("This step transformation will be benchmarked!");
+					benchmarkingTransformer.setBus(bus);
+					// FIXME Verbosity should be set according to some command-line parameter
+					benchmarkingTransformer.setVerbosity(Level.TRACE);
+				} else {
+					LOGGER.info("This step transformation won't be benchmarked, non-reverse transformation with --reverse-transformation set!");
+				}
 			}
 			try {
-				if (startUVL || intermediate) {
-					model = transformer.transform((FeatureModel) model, file.getFileName().toString(), strategy);
-					intermediate = false;
+				if (fromUVL) {
+					model = transformer.transform((FeatureModel) model, file.getFileName().toString(), strategy, transformationIterator.hasNext());
+					// intermediate is true as long as there are transformers left in the queue
 				} else {
-					model = transformer.transform(model, file.getFileName().toString(), strategy);
-					intermediate = true;
+					model = transformer.transform(model, file.getFileName().toString(), strategy, transformationIterator.hasNext());
 				}
+				fromUVL = !fromUVL;
+				// If last transformation was from UVL to target type, next one has to be from target type to UVL
+				// Toggle after every transformation (pivot model principle)
 			} catch (Exception e) {
 				if (strict) {
 					// Do not suppress after catching
-					throw e;
+					throw new Error(e);
 				} else {
 					System.err.println("Transformation failed: " + file.getFileName() + ", unstrict mode -> continue with next model in batch");
-					System.err.println("Transformer reports: " + e.getMessage());
+					System.err.println("Transformer reports: " + e.getClass().descriptorString() + " with " +  e.getMessage() + ", caused by");
+					e.printStackTrace();
 					return -1;
 				}
 			}
 		}
+		
+		// Declare new final model variable (required for single-thread executor timeout)
+		final var modelToBeSerialized = model;
 
 		Path newPath = targetPath.resolve(file.getFileName() + serializer.getFileExtension());
 
 		LOGGER.debug(String.format("Write transformed file to %s...", newPath.toAbsolutePath()));
 		LOGGER.debug("Transformation might abort if serializer fails in strict mode!");
 
+		// Reuse deserializer's executor
+		Future<Object> serializedPath = executor.submit(() -> {
+			return serializer.serializeToFile(modelToBeSerialized, newPath);
+		});
+		
 		try {
-			serializer.serializeToFile(model, newPath);
+			// serializedPath is a dummy feature, we don't care about the returned path
+			serializedPath.get(timeout, TimeUnit.SECONDS);			
 		} catch (Exception e) {
 			if (strict) {
 				// Do not suppress after catching
-				throw e;
+				throw new Error(e);
 			} else {
-				System.err.println("Serialization failed: " + file.getFileName()
-						+ ", unstrict mode -> continue with next model in batch");
+				System.err.println("Serialization failed! " + file.getFileName() + ", unstrict mode -> continue with next model in batch");
+				System.err.println("Serializer reports: " + e.getClass().descriptorString() + " with " +  e.getMessage() + ", caused by");
+				e.printStackTrace();
 				return -1;
 			}
 		}
@@ -343,8 +436,10 @@ public class TransformCommand implements Callable<Integer> {
 			record.put("filePath", file.getFileName());
 			record.put("targetType", targetType);
 			for (IBenchmark bench : activated) {
-				//LOGGER.debug("Now writing benchmark result for " + bench.getId());
-				record.put(bench.getId(), bench.getResults());
+				for (int i = 0; i < bench.getResultsHeader().size(); i++) {
+					//LOGGER.debug("Now writing benchmark result for " + bench.getId());
+					record.put((String) bench.getResultsHeader().get(i), bench.getResults().get(i));
+				}
 			}			
 			rw.writeResults(record);
 		}
