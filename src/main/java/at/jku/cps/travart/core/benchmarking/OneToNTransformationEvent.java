@@ -9,7 +9,7 @@ import java.time.Instant;
  * 
  * This event has no own fields.
  */
-public class OneToNTransformationEvent extends AbstractBenchmarkingEvent {
+public class OneToNTransformationEvent extends AbstractBenchmarkEvent {
 
 	public OneToNTransformationEvent(Instant time, String msg, int ctx) {
 		super(time, msg, ctx);

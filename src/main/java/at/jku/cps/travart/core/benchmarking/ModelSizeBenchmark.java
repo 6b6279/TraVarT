@@ -40,8 +40,11 @@ public class ModelSizeBenchmark extends AbstractBenchmark<Integer> {
 		// FIXME React if currentSize != event.finalSize?
 		log("Just recieved: TransformationEndEvent = " + event.getDetails() + ", size: " + event.finalSize);
 		if (event.intermediate) return;
-		if ((initialSize + diff) != event.finalSize) 
+		// The name diff is a bit confusing, but the initial "blank" model has size zero
+		if (diff != event.finalSize) {
 			LOGGER.warn("Feature count doesn't match with count reported by TransformationEndEvent: " + diff + " != " + event.finalSize);
+			LOGGER.warn("This is expected if the used plugin does not emit NewFeatureEvents");
+		}
 		this.finalSize = event.finalSize;
 		registeredBus.unregister(this);
 	}

@@ -1,3 +1,11 @@
 package at.jku.cps.travart.core.benchmarking;
 
-public class UnmuteEvent {}
+import java.time.Instant;
+
+public class UnmuteEvent extends AbstractBenchmarkEvent {
+	
+	public UnmuteEvent(Instant time, String msg, int ctx) {
+		super(time, msg, ctx);
+	}
+
+}

@@ -87,14 +87,14 @@ public abstract class AbstractBenchmarkingTransformer<T> implements IEmitting, I
 	@Override
 	public void triggerUnmuteEvent() {
 		if (Objects.nonNull(bus)) {
-			bus.post(new UnmuteEvent());
+			bus.post(new UnmuteEvent(Instant.now(), "", this.hashCode()));
 		}
 	}
 	
 	@Override
 	public void triggerMuteEvent() {
 		if (Objects.nonNull(bus)) {
-			bus.post(new MuteEvent());
+			bus.post(new MuteEvent(Instant.now(), "", this.hashCode()));
 		}
 	}
 	

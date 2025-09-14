@@ -7,7 +7,7 @@ import java.time.Instant;
  * 
  * This event has a custom "initialSize" field.
  */
-public class TransformationBeginEvent extends AbstractBenchmarkingEvent {
+public class TransformationBeginEvent extends AbstractBenchmarkEvent {
 	
 	public final int initialSize;
 

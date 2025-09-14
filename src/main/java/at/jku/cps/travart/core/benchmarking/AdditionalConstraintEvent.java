@@ -8,7 +8,7 @@ import java.time.Instant;
  * 
  * This event has no own fields.
  */
-public class AdditionalConstraintEvent extends AbstractBenchmarkingEvent {
+public class AdditionalConstraintEvent extends AbstractBenchmarkEvent {
 	
 	private int factor;
 

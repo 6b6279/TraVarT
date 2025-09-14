@@ -49,7 +49,7 @@ public final class TraVarTPluginManager {
 	
 	private static final Logger LOGGER = LogManager.getLogger(TraVarTPluginManager.class);
 
-	private static PluginManager pluginManager;
+	private static PluginManager plugman;
 
 	private TraVarTPluginManager() {
 
@@ -61,20 +61,20 @@ public final class TraVarTPluginManager {
 	public static void startPlugins() {
 		// create the plugin manager
 		LOGGER.debug("Starting plugin manager...");
-		pluginManager = new DefaultPluginManager() {
+		plugman = new DefaultPluginManager() {
 			@Override
 			protected PluginDescriptorFinder createPluginDescriptorFinder() {
 				return new ManifestPluginDescriptorFinder();
 			}
 		};
 		
-		List<Path> pluginDirectories = pluginManager.getPluginsRoots().stream().map(e -> e.toAbsolutePath()).collect(Collectors.toList());
+		List<Path> pluginDirectories = plugman.getPluginsRoots().stream().map(e -> e.toAbsolutePath()).collect(Collectors.toList());
 		LOGGER.debug("Will check these paths: " + pluginDirectories);
 		// load the plugins
-		pluginManager.loadPlugins();
+		plugman.loadPlugins();
 
 		// start the plugins
-		pluginManager.startPlugins();
+		plugman.startPlugins();
 
 		// find plugins
 		findAvailablePlugins();
@@ -85,7 +85,7 @@ public final class TraVarTPluginManager {
 	 */
 	public static void findAvailablePlugins() {
 		// Retrieve extensions for IPlugin extension point
-		final List<IPlugin> plugins = pluginManager.getExtensions(IPlugin.class);
+		final List<IPlugin> plugins = plugman.getExtensions(IPlugin.class);
 		for (final IPlugin plugin : plugins) {
 			availablePlugins.put(plugin.getId(), plugin);
 		}
@@ -94,7 +94,7 @@ public final class TraVarTPluginManager {
 	@SuppressWarnings("rawtypes")
 	public static Map<String, IPlugin> getBenchmarkingPlugins() {
 		// Avoid using instanceof, filter already found plugins
-		final List<IBenchmarkingPlugin> benchmarkingPlugins = pluginManager.getExtensions(IBenchmarkingPlugin.class);
+		final List<IBenchmarkingPlugin> benchmarkingPlugins = plugman.getExtensions(IBenchmarkingPlugin.class);
 		LOGGER.debug("PF4J reports: " + benchmarkingPlugins.size() + " extensions of IBenchmarkingPlugin found");
 		LOGGER.debug("TraVarTPluginManager has already registered following plugins: " + availablePlugins);
 		final Map<String, IPlugin> toReturn = benchmarkingPlugins.stream().collect(Collectors.toMap(IPlugin::getName, Function.identity()));
@@ -112,6 +112,6 @@ public final class TraVarTPluginManager {
 	 * A static function to stop the available plugins in the system.
 	 */
 	public static void stopPlugins() {
-		pluginManager.stopPlugins();
+		plugman.stopPlugins();
 	}
 }

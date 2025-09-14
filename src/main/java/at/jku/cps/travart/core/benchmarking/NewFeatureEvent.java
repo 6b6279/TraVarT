@@ -7,7 +7,7 @@ import java.time.Instant;
  * 
  * This event has no own fields.
  */
-public class NewFeatureEvent extends AbstractBenchmarkingEvent {
+public class NewFeatureEvent extends AbstractBenchmarkEvent {
 
 	public NewFeatureEvent(Instant time, String msg, int ctx) {
 		super(time, msg, ctx);

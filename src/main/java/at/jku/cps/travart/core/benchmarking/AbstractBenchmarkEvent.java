@@ -2,7 +2,7 @@ package at.jku.cps.travart.core.benchmarking;
 
 import java.time.Instant;
 
-public abstract class AbstractBenchmarkingEvent implements IBenchmarkingEvent<String> {
+public abstract class AbstractBenchmarkEvent implements IBenchmarkingEvent<String> {
 	
 	private final Instant emittedAt;
 	private final String message;
@@ -14,7 +14,7 @@ public abstract class AbstractBenchmarkingEvent implements IBenchmarkingEvent<St
 	 * @param msg Message/details of event emission, used for logging
 	 * @param ctx Context of the event, either a plugin or a session ID
 	 */
-	public AbstractBenchmarkingEvent(Instant time, String msg, int ctx) {
+	public AbstractBenchmarkEvent(Instant time, String msg, int ctx) {
 		this.emittedAt = time;
 		this.message = msg;
 		this.context = ctx; // Implement as bit mask; match current plugin and/or session

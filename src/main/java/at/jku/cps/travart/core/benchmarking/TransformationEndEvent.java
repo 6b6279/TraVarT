@@ -10,7 +10,7 @@ import java.time.Instant;
  * transformation had to be aborted, emit this event with `success` set to false or
  * emit TransformationAbortedEvent.
  */
-public class TransformationEndEvent extends AbstractBenchmarkingEvent {
+public class TransformationEndEvent extends AbstractBenchmarkEvent {
 	
 	public final int finalSize;
 	public final boolean success;

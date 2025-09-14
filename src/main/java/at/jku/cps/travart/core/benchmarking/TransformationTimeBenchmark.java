@@ -19,7 +19,7 @@ public class TransformationTimeBenchmark extends AbstractBenchmark<Long> {
 	private Instant end;
 	
 	@Subscribe
-	private void initialSize(TransformationBeginEvent event) {
+	private void startOfTransformation(TransformationBeginEvent event) {
 		log("Just recieved: TransformationBeginEvent = " + event.getDetails() + ", size: " + event.initialSize);
 		startedAt = event.getTimestamp();
 	}

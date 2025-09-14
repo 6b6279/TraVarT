@@ -17,54 +17,58 @@ package at.jku.cps.travart.core.cli;
 
 import static org.mockito.Mockito.mock;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Queue;
 import java.util.ServiceLoader;
 import java.util.Set;
+import java.util.StringJoiner;
+import java.util.TreeSet;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
-import java.util.stream.StreamSupport;
+
+import javax.xml.transform.TransformerConfigurationException;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.mockito.Mockito;
 import org.slf4j.event.Level;
 
+import com.google.common.base.Stopwatch;
 import com.google.common.eventbus.EventBus;
 
 import at.jku.cps.travart.core.common.IModelTransformer;
 import at.jku.cps.travart.core.common.IModelTransformer.STRATEGY;
 import at.jku.cps.travart.core.common.IPlugin;
-import at.jku.cps.travart.core.common.IBenchmarkingPlugin;
 import at.jku.cps.travart.core.benchmarking.IBenchmark;
 import at.jku.cps.travart.core.benchmarking.ResultsWriter;
 import at.jku.cps.travart.core.common.IDeserializer;
 import at.jku.cps.travart.core.common.ISerializer;
-import at.jku.cps.travart.core.common.IValidate;
 import at.jku.cps.travart.core.exception.NotSupportedVariabilityTypeException;
 import at.jku.cps.travart.core.exception.TransformationException;
 import at.jku.cps.travart.core.helpers.TraVarTPluginManager;
-import at.jku.cps.travart.core.io.FileUtils;
+import at.jku.cps.travart.core.io.TraVarTFileUtils;
 import at.jku.cps.travart.core.io.UVLDeserializer;
 import at.jku.cps.travart.core.io.UVLSerializer;
 import at.jku.cps.travart.core.transformation.AbstractBenchmarkingTransformer;
@@ -113,13 +117,19 @@ public class TransformCommand implements Callable<Integer> {
 	@Option(names = { "-wb",
 			"--write-benchmarks" }, required = false, description = "Path to file to which the benchmark results should be written in CSV format. This is optional.")
 	private Path benchmarkResultsFile;
+	
+	@Option(names = { "--blacklist-file" },
+			required = false, description = "File with CR-seperated list of file names. Files that match with any of the names from the given file will be ignored/skipped.")
+	private Path blacklistFile;
+	
+	private List<String> blacklistedNames;
 
 	@Option(names = {
 			"--strategy" }, required = false, defaultValue = "ONE_WAY", description = "Transformation strategy to use: ROUNDTRIP or ONE_WAY. Will default to ONE_WAY if none given.")
 	private STRATEGY strategy;
 	
 	@Option(names = {
-			"--roundtrip" }, description = "Set only if --strategy was set to ROUNDTRIP. Does an in-place roundtrip transformation over the targetType.")
+			"--inplace-roundtrip" }, description = "Set only if --strategy was set to ROUNDTRIP. Does an in-place roundtrip transformation over the targetType.")
 	private boolean inPlaceRoundtrip;
 	
 	@Option(names = {
@@ -128,16 +138,16 @@ public class TransformCommand implements Callable<Integer> {
 	
 	@Option(names = {
 			"--reverse-transformation" }, 
-			description = "Set only if --no-serialize is set and --strategy is ROUNDTRIP. Reverses transformation directly after, benchmarking only the reverse transformation."
+			description = "Reverses transformation directly after, benchmarking only the reverse transformation. Behaviour depends on used strategy and --no-serialize."
 	)
 	private boolean reverseTransformation;
 
 	@Option(names = {
-			"--strict" }, description = "Whether TraVarT should stop transformation if the underlying plugin throws an exception. This is only relevant when multiple models are being transformed.")
+			"--strict" }, description = "Whether TraVarT should abort if the underlying plugin throws an exception. This is only relevant when multiple models are being transformed.")
 	private boolean strict;
 	
 	@Option(names = {
-			"--timeout" }, defaultValue = "5", description = "Timeout for (de-)serializing models. Defaults to 5 seconds.")
+			"--timeout" }, defaultValue = "5", description = "Timeout in seconds for (de-)serializing models. Defaults to 5 seconds.")
 	private long timeout;
 
 	private IDeserializer deserializer;
@@ -170,12 +180,22 @@ public class TransformCommand implements Callable<Integer> {
 			}
 			targetPath.toFile().mkdirs();
 		}
+		if (Objects.nonNull(blacklistFile)) {
+			LOGGER.debug("Reading blacklist file: " + blacklistFile.toAbsolutePath());
+			if (Files.exists(blacklistFile) && Files.isRegularFile(blacklistFile)) {
+				blacklistedNames = Files.readAllLines(blacklistFile);
+				LOGGER.debug("Blacklisted " + blacklistedNames.size() + " files!");
+			} else {
+				LOGGER.error("Path to blacklist file given, but the given file is not valid.");
+				return 4;
+			}
+		}
 		// Collect necessary information for transformations
 		LOGGER.debug("Initialize transformations...");
 		int init = initializeTransformations();
 		if (init != 0) {
 			LOGGER.error("Unable to initialize plugins! Check installed plugins using command \"plugin\".");
-			return 4;
+			return 5;
 		}
 		// Run transformations
 		LOGGER.debug("Starting transformation of variability artifacts...");
@@ -283,12 +303,17 @@ public class TransformCommand implements Callable<Integer> {
 	}
 
 	private Integer transformDirectory() throws IOException, NotSupportedVariabilityTypeException {
-		Set<Path> files = new HashSet<>();
+		Set<Path> files = new TreeSet<>(Comparator.comparingLong((Path p) -> {
+		try {
+			return Files.size(p);
+		} catch (IOException e) {
+			return Long.MAX_VALUE;
+		}}).thenComparing(Comparator.comparing(Path::toString)));
 		int counter = 0;
 		LOGGER.debug(String.format("Collect files of type %s...", toStringList(deserializer.fileExtensions())));
 		for (Object elem : deserializer.fileExtensions()) {
 			String extension = (String) elem;
-			Set<Path> filesFound = FileUtils.getPathSet(sourcePath, extension);
+			Set<Path> filesFound = TraVarTFileUtils.getPathSet(sourcePath, extension);
 			files.addAll(filesFound);
 			LOGGER.debug(String.format("%d files with extension %s found...", filesFound.size(), extension));
 		}
@@ -297,6 +322,9 @@ public class TransformCommand implements Callable<Integer> {
 			int result = transformSingleFile(file);
 			if (result != 0 && strict) {
 				LOGGER.error(String.format("Error during transformation of file %s...", file.getFileName()));
+				return result;
+			} else if (result == -999) { // FIXME Smelly code
+				LOGGER.error("Timeout with misbehaving thread, aborting!");
 				return result;
 			} else {
 				// Use counter as the modifier on files.size()
@@ -311,29 +339,10 @@ public class TransformCommand implements Callable<Integer> {
 	}
 
 	private Integer transformSingleFile(final Path file) throws IOException, NotSupportedVariabilityTypeException {
+		TransformationResult result = TransformationResult.SUCCESS;
 		LOGGER.debug(String.format("Start transforming file %s...", file.getFileName()));
 		EventBus bus = null; // Initialize only if benchmarking is required
 		List<IBenchmark> activated = new ArrayList<IBenchmark>();
-		LOGGER.debug("Attempting to deserizalize " + file.getFileName() + " with " + deserializer.toString());
-		
-		final ExecutorService executor = Executors.newSingleThreadExecutor();
-		Object model;
-		Future<Object> maybeModel = executor.submit(() -> {
-			return deserializer.deserializeFromFile(file);
-		});
-		
-		try {
-			model = maybeModel.get(timeout, TimeUnit.SECONDS);
-		} catch (Exception e) {
-			if (strict) {
-				throw new Error(e);
-			} else {
-				System.err.println("Deserializer failed! " + file.getFileName() + ", unstrict mode -> continue with next model in batch");
-				System.err.println("Deserializer reports: " + e.getClass().descriptorString() + " with " +  e.getMessage() + ", caused by");
-				e.printStackTrace();
-				return -1;
-			}
-		}
 		
 		if (!Objects.isNull(benchmarks) && benchmarks.size() != 0) {
 			LOGGER.debug("Benchmarking option non-null (" + benchmarks + "), initializing event bus...");
@@ -355,11 +364,75 @@ public class TransformCommand implements Callable<Integer> {
 				rw = new ResultsWriter(activated, benchmarkResultsFile);
 			}
 		}
+		
+		LOGGER.debug("Attempting to deserizalize " + file.getFileName() + " with " + deserializer.toString());
+		
+		if (Objects.nonNull(blacklistedNames)) {
+			LOGGER.debug("Is this file blacklisted?");
+			if (blacklistedNames.contains(file.getFileName().toString())) {
+				System.out.println("Blacklisted file, skipping...");
+				return -1;
+			}
+		}
+			
+		if (Objects.nonNull(rw)) {
+			if (rw.entryAlreadyExists("fileName", file.getFileName().toString(), rw.getResultsFile())) {
+				System.out.println("Results writeback already has an entry for this file, skipping...");
+				return -1;
+			}
+		}
+		
+		Thread timeoutRunner = null;
+		Object model;
+		FutureTask<Object> maybeModel = new FutureTask<>(() -> {
+			return deserializer.deserializeFromFile(file);
+		});
+		
+		long deserializationTime;
+		
+		try {
+			timeoutRunner = new Thread(maybeModel, "timeout-runner_deserializer");
+			timeoutRunner.setDaemon(true);
+			timeoutRunner.start();
+			Stopwatch deserializerTimer = Stopwatch.createStarted();
+			model = maybeModel.get(timeout, TimeUnit.SECONDS);
+			deserializationTime = TimeUnit.MICROSECONDS.convert(deserializerTimer.stop().elapsed().abs());
+		} catch (Exception e) {
+			if (strict) {
+				throw new Error(e);
+			} else {
+				System.err.println("Deserializer failed! " + file.getFileName() + ", unstrict mode -> continue with next model in batch");
+				System.err.println("Deserializer reports: " + e.getClass().descriptorString() + " with " +  e.getMessage() + ", caused by");				
+				e.printStackTrace();
+				result = TransformationResult.FAILED_DESERIALIZATION;
+				if (e instanceof TimeoutException) {
+					LOGGER.debug("Timeout detected, canceling submitted job...");
+					maybeModel.cancel(true);
+					if (timeoutRunner.isAlive()) {
+						LOGGER.error("Worker thread is misbehaving, still running despite timeout + interruption!");
+						LOGGER.error("Cannot ensure correctness of benchmarks due to hung thread! Aborting.");
+						LOGGER.error("Consider using a blacklist.");
+						if (Objects.nonNull(blacklistFile) && blacklistFile.toFile().exists()) {
+							LOGGER.warn("Blacklist file was given, adding offending file to blacklist...");
+							Files.write(blacklistFile,  List.of(file.getFileName().toString()),
+									StandardCharsets.UTF_8,
+									StandardOpenOption.CREATE,
+									StandardOpenOption.APPEND);
+						}
+					}
+					result = TransformationResult.TIMEOUT_DESERIALIZATION;
+				}
+				insertBenchmarkDud(file.getFileName(), benchmarks.size(), result);
+				return result == TransformationResult.TIMEOUT_DESERIALIZATION ? -999 : -1;
+			}
+		}
+		
+		assert !timeoutRunner.isAlive();
 
 		boolean fromUVL = startUVL;
 		var transformationIterator = transformers.iterator();
 		var transformationIndex = 0;
-		LOGGER.info("Currently scheduled: " + transformers.size() + " transformation steps"); 
+		LOGGER.info("Currently scheduled: " + transformers.size() + " transformation step(s)"); 
 		while (transformationIterator.hasNext()) {
 			transformationIndex++;
 			var transformer = transformationIterator.next();
@@ -375,28 +448,62 @@ public class TransformCommand implements Callable<Integer> {
 					LOGGER.info("This step transformation won't be benchmarked, non-reverse transformation with --reverse-transformation set!");
 				}
 			}
+			FutureTask<Object> prospectiveModel = null;
+			final var intermediateModel = model;
+			// Consider timeout also during transformation, encapsulate in try block
 			try {
+				LOGGER.info("Will invoke transformer " + transformer.getClass() + " with STRATEGY = " + strategy);
 				if (fromUVL) {
-					model = transformer.transform((FeatureModel) model, file.getFileName().toString(), strategy, transformationIterator.hasNext());
+					// Reuse executor
+					prospectiveModel = new FutureTask<>(() -> {
+						return transformer.transform((FeatureModel) intermediateModel, file.getFileName().toString(), strategy, transformationIterator.hasNext());
+					});
 					// intermediate is true as long as there are transformers left in the queue
 				} else {
-					model = transformer.transform(model, file.getFileName().toString(), strategy, transformationIterator.hasNext());
+					prospectiveModel = new FutureTask<>(() -> {
+						return transformer.transform(intermediateModel, file.getFileName().toString(), strategy, transformationIterator.hasNext());
+					});
 				}
 				fromUVL = !fromUVL;
 				// If last transformation was from UVL to target type, next one has to be from target type to UVL
 				// Toggle after every transformation (pivot model principle)
+				timeoutRunner = new Thread(prospectiveModel, "timeout-runner_transformation");
+				timeoutRunner.setDaemon(true);
+				timeoutRunner.start();
+				model = prospectiveModel.get(timeout, TimeUnit.SECONDS);
 			} catch (Exception e) {
 				if (strict) {
 					// Do not suppress after catching
 					throw new Error(e);
 				} else {
-					System.err.println("Transformation failed: " + file.getFileName() + ", unstrict mode -> continue with next model in batch");
-					System.err.println("Transformer reports: " + e.getClass().descriptorString() + " with " +  e.getMessage() + ", caused by");
+					System.err.println("Transformation failed: " + file.getFileName()
+							+ ", unstrict mode -> continue with next model in batch");
+					System.err.println("Transformer reports: " + e.getClass().descriptorString() + " with "
+							+ e.getMessage() + ", caused by");
 					e.printStackTrace();
-					return -1;
+					result = TransformationResult.FAILED_TRANSFORMATION;
+					if (e instanceof TimeoutException) {
+						LOGGER.debug("Timeout detected, canceling submitted job...");
+						prospectiveModel.cancel(true);
+						if (timeoutRunner.isAlive()) {
+							LOGGER.error("Worker thread is misbehaving, still running despite timeout + interruption!");
+							LOGGER.error("Cannot ensure correctness of benchmarks due to hung thread! Aborting.");
+							LOGGER.error("Consider using a blacklist.");
+							if (Objects.nonNull(blacklistFile) && blacklistFile.toFile().exists()) {
+								LOGGER.warn("Blacklist file was given, adding offending file to blacklist...");
+								Files.write(blacklistFile, List.of(file.getFileName().toString()),
+										StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+							}
+						}
+						result = TransformationResult.TIMEOUT_TRANSFORMATION;
+					}
+					insertBenchmarkDud(file.getFileName(), benchmarks.size(), result);
+					return result == TransformationResult.TIMEOUT_TRANSFORMATION ? -999 : -1;
 				}
 			}
 		}
+		
+		assert !timeoutRunner.isAlive();
 		
 		// Declare new final model variable (required for single-thread executor timeout)
 		final var modelToBeSerialized = model;
@@ -407,24 +514,46 @@ public class TransformCommand implements Callable<Integer> {
 		LOGGER.debug("Transformation might abort if serializer fails in strict mode!");
 
 		// Reuse deserializer's executor
-		Future<Object> serializedPath = executor.submit(() -> {
+		FutureTask<Object> serializedPath = new FutureTask<>(() -> {
 			return serializer.serializeToFile(modelToBeSerialized, newPath);
 		});
 		
 		try {
-			// serializedPath is a dummy feature, we don't care about the returned path
-			serializedPath.get(timeout, TimeUnit.SECONDS);			
+			timeoutRunner = new Thread(serializedPath, "timeout-runner_transformation");
+			timeoutRunner.setDaemon(true);
+			timeoutRunner.start();
+			// serializedPath is a dummy future; we don't care about the returned path
+			serializedPath.get(timeout, TimeUnit.SECONDS);
 		} catch (Exception e) {
 			if (strict) {
 				// Do not suppress after catching
 				throw new Error(e);
 			} else {
 				System.err.println("Serialization failed! " + file.getFileName() + ", unstrict mode -> continue with next model in batch");
-				System.err.println("Serializer reports: " + e.getClass().descriptorString() + " with " +  e.getMessage() + ", caused by");
+				System.err.println("Serializer reports: " + e.getClass().descriptorString() + " with " + e.getMessage() + ", caused by");
 				e.printStackTrace();
-				return -1;
+				result = TransformationResult.FAILED_DESERIALIZATION;
+				if (e instanceof TimeoutException) {
+					LOGGER.debug("Timeout detected, canceling submitted job...");
+					serializedPath.cancel(true);
+					if (timeoutRunner.isAlive()) {
+						LOGGER.error("Worker thread is misbehaving, still running despite timeout + interruption!");
+						LOGGER.error("Cannot ensure correctness of benchmarks due to hung thread! Aborting.");
+						LOGGER.error("Consider using a blacklist.");
+						if (Objects.nonNull(blacklistFile) && blacklistFile.toFile().exists()) {
+							LOGGER.warn("Blacklist file was given, adding offending file to blacklist...");
+							Files.write(blacklistFile, List.of(file.getFileName().toString()), StandardCharsets.UTF_8,
+									StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+						}
+					}
+					result = TransformationResult.TIMEOUT_DESERIALIZATION;
+				}
+				insertBenchmarkDud(file.getFileName(), benchmarks.size(), result);
+				return result == TransformationResult.TIMEOUT_DESERIALIZATION ? -999 : -1;
 			}
 		}
+		
+		assert !timeoutRunner.isAlive();
 
 		for (IBenchmark benchmark : activated) {
 			System.out.println("Benchmark " + benchmark.getId() + " reports: " + benchmark.getResults().toString());
@@ -435,6 +564,8 @@ public class TransformCommand implements Callable<Integer> {
 			Map<String, Object> record = new LinkedHashMap<>();
 			record.put("filePath", file.getFileName());
 			record.put("targetType", targetType);
+			record.put("result", result);
+			record.put("deserializationTime", deserializationTime);
 			for (IBenchmark bench : activated) {
 				for (int i = 0; i < bench.getResultsHeader().size(); i++) {
 					//LOGGER.debug("Now writing benchmark result for " + bench.getId());
@@ -445,5 +576,18 @@ public class TransformCommand implements Callable<Integer> {
 		}
 		
 		return 0;
+	}
+
+	// FIXME Do not duplicate code already used for normal writeback, see code above
+	// Insert dud to writeback csv file if -wb set
+	private void insertBenchmarkDud(Path fileName, int nBlanks, TransformationResult result) throws IOException {
+		if (Objects.nonNull(rw)) {
+			LOGGER.debug(String.format("Writing dud (= blank CSV entry) for %s...", fileName));
+			Map<String, Object> record = new LinkedHashMap<>();
+			record.put("filePath", fileName);
+			record.put("targetType", targetType);
+			record.put("result", result);
+			rw.writeResults(record);
+		}		
 	}
 }

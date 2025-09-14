@@ -1,3 +1,11 @@
 package at.jku.cps.travart.core.benchmarking;
 
-public class MuteEvent {}
+import java.time.Instant;
+
+public class MuteEvent extends AbstractBenchmarkEvent {
+
+	public MuteEvent(Instant time, String msg, int ctx) {
+		super(time, msg, ctx);
+	}
+
+}
