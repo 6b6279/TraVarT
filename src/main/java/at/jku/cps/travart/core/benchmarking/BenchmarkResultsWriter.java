@@ -55,7 +55,7 @@ public class BenchmarkResultsWriter {
 			LOGGER.debug(
 					"Benchmark writeback file already exists, the transformer will skip already benchmarked files.");
 		}
-		String[] benchmarkColumns = benchmarks.stream()
+		String[] benchmarkColumns = (String[]) benchmarks.stream()
 				.<String>flatMap(e -> e.getResultsHeader().stream())
 				.toArray(String[]::new);
 		var benchmarkResultsFormatBuilder = CSVFormat.DEFAULT.builder()

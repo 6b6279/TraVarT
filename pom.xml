@@ -13,6 +13,7 @@
 		<deploy.disabled>true</deploy.disabled>
 		<source.disabled>true</source.disabled>
 		<checkstyle-maven-plugin.version>3.6.0</checkstyle-maven-plugin.version>
+		<log4j.version>2.25.2</log4j.version>
 		<auto-service.version>1.1.1</auto-service.version>
 	</properties>
 
@@ -40,11 +41,6 @@
 			<groupId>io.github.universal-variability-language</groupId>
 			<artifactId>uvl-metamodel</artifactId>
 			<version>1.0</version>
-		</dependency>
-		<dependency>
-			<groupId>org.apache.logging.log4j</groupId>
-			<artifactId>log4j-core</artifactId>
-			<version>2.25.2</version>
 		</dependency>
 		<dependency>
 			<groupId>org.logicng</groupId>
@@ -90,13 +86,18 @@
 		</dependency>
 		<dependency>
 			<groupId>org.apache.logging.log4j</groupId>
+			<artifactId>log4j-core</artifactId>
+			<version>${log4j.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.logging.log4j</groupId>
 			<artifactId>log4j-api</artifactId>
-			<version>2.20.0</version>
+			<version>${log4j.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.logging.log4j</groupId>
 			<artifactId>log4j-slf4j-impl</artifactId>
-			<version>2.20.0</version>
+			<version>${log4j.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.mockito</groupId>
